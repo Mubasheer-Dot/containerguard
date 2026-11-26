@@ -1,0 +1,9 @@
+utc,incident,container,trigger_rule,bundle_sha256,collector
+2026-11-15T19:56:40Z,incident-20261115T195638Z-cg-web,cg-web,manual test,68c956095e663187749f55823d5c8525deae3f43659df66055bcf3537944b808,root@kali
+2026-11-15T20:08:35Z,incident-20261115T200831Z-cg-web,cg-web,CG Sensitive File Read,8426c2f5852aeeace113132dbdf6450a2f72b6189b054d72e4842fa0df35808b,root@kali
+2026-11-15T20:09:47Z,incident-20261115T200944Z-cg-db,cg-db,CG Sensitive File Read,27d38dcf2fd21b2bb4468505515170982b7a09b1b93c19f638c2cfcc2ec49c72,root@kali
+2026-11-15T20:16:22Z,incident-20261115T201620Z-cg-web,cg-web,CG Sensitive File Read,184aadb0da169abe3ebb8e78c039eb67c0b7eb4387ef8f61b91263ac00f0b41a,root@kali
+2026-11-16T17:34:24Z,incident-20261116T173422Z-cg-worker,cg-worker,api request,6047fc9b96e6e45337d4382f2662bd0fe48e5260630ef72acf94dfc242762401,root@kali
+2026-11-16T17:39:28Z,incident-20261116T173926Z-cg-web,cg-web,api request,7f7fdc45ca8454766ed0c18b310ef28364e9b5f571721ff9acaa030be4e990b9,root@kali
+2026-11-16T17:39:32Z,incident-20261116T173931Z-cg-db,cg-db,api request,221c73e4427c5f2b712d97b7db3b62c95d3ca94f18e6057caf2d533b1e0adb0f,root@kali
+2026-11-16T17:39:34Z,incident-20261116T173933Z-cg-worker,cg-worker,api request,f770773d26521004aaa574ec0d6c20d93d43a35c50e4d4513e123ccb09342f62,root@kali

@@ -1,0 +1,7 @@
+.token
+*.log
+*.tar.gz
+!sample-evidence/*.tar.gz
+__pycache__/
+docker-bench-security/
+trivy/

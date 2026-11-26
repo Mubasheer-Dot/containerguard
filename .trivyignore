@@ -1,0 +1,3 @@
+# Accepted risk: Go stdlib in the gosu binary shipped by the upstream postgres image.
+# gosu does not run a TLS server, so crypto/tls is not reachable. Revisit when upstream rebuilds gosu.
+CVE-2025-68121

@@ -1,0 +1,77 @@
+- macro: cg_container
+  condition: (container.name in (cg-web, cg-db, cg-worker))
+
+# Rule 1: interactive shell in a production container
+- rule: CG Interactive Shell in Production Container
+  desc: A shell with a TTY was spawned in a production container
+  condition: >
+    evt.type = execve and container.name in (cg-web, cg-db, cg-worker)
+    and proc.name in (bash, sh, zsh, dash) and proc.tty != 0
+  output: >
+    CG-ALERT shell in container (user=%user.name container=%container.name
+    id=%container.id image=%container.image.repository cmd=%proc.cmdline)
+  priority: WARNING
+  tags: [containerguard, execution, T1059]
+
+# Rule 2: reads of sensitive credential files
+- rule: CG Sensitive File Read
+  desc: Read of /etc/shadow or ssh keys inside a production container
+  condition: >
+    evt.type in (open, openat, openat2) and container.name in (cg-web, cg-db, cg-worker)
+    and (fd.name = /etc/shadow or fd.name startswith /root/.ssh)
+  output: >
+    CG-ALERT sensitive file read (file=%fd.name user=%user.name
+    container=%container.name id=%container.id cmd=%proc.cmdline)
+  priority: CRITICAL
+  tags: [containerguard, credential_access, T1555]
+
+# Rule 3: access to the Docker socket
+- rule: CG Docker Socket Access
+  desc: A process touched docker.sock inside a production container
+  condition: >
+    evt.type in (open, openat, openat2, connect) and container.name in (cg-web, cg-db, cg-worker)
+    and (fd.name = /var/run/docker.sock or fd.name = /run/docker.sock)
+  output: >
+    CG-ALERT docker.sock access (container=%container.name id=%container.id
+    cmd=%proc.cmdline file=%fd.name)
+  priority: CRITICAL
+  tags: [containerguard, privilege_escalation, T1611]
+
+# Rule 4: privilege-escalation tooling / syscalls
+- rule: CG Privilege Escalation Syscall
+  desc: mount, nsenter or setns attempted inside a production container
+  condition: >
+    container.name in (cg-web, cg-db, cg-worker)
+    and not proc.name startswith runc
+    and (evt.type in (setns, mount, umount2)
+         or (evt.type = execve and proc.name in (mount, nsenter, unshare)))
+  output: >
+    CG-ALERT privilege escalation attempt (proc=%proc.name syscall=%evt.type
+    container=%container.name id=%container.id user=%user.name cmd=%proc.cmdline)
+  priority: CRITICAL
+  tags: [containerguard, privilege_escalation, T1611]
+
+# Rule 5: unexpected outbound connection from the batch worker
+- rule: CG Unexpected Outbound Connection From Worker
+  desc: The worker should only talk to the database on the lab network
+  condition: >
+    evt.type in (connect, sendto) and container.name = "cg-worker"
+    and fd.typechar in (4, 6) and fd.sip != "0.0.0.0"
+    and not fd.snet in ("127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+  output: >
+    CG-ALERT unexpected outbound (dest=%fd.sip:%fd.sport container=%container.name
+    id=%container.id cmd=%proc.cmdline)
+  priority: WARNING
+  tags: [containerguard, exfiltration, T1041]
+
+# Rule 6: creation of a privileged container
+- rule: CG Privileged Container Created
+  desc: A privileged container was started on the host
+  condition: >
+    evt.type = execve and container.id = host
+    and proc.name = docker and proc.args contains "run"
+    and proc.args contains "--privileged"
+  output: >
+    CG-ALERT privileged container created (user=%user.name cmd=%proc.cmdline)
+  priority: CRITICAL
+  tags: [containerguard, privilege_escalation, T1610]

@@ -1,0 +1,99 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>ContainerGuard</title>
+<style>
+body{font:14px system-ui;max-width:1000px;margin:1.2em auto;padding:0 1em;background:#111;color:#eee}
+nav button{background:#222;color:#eee;border:1px solid #444;padding:6px 12px;cursor:pointer}nav button.on{background:#2e7d32}
+table{border-collapse:collapse;width:100%;margin-top:8px}td,th{border:1px solid #444;padding:4px 8px;text-align:left;vertical-align:top}th{background:#222}
+.bar{background:#2e7d32;height:16px;color:#fff;font-size:11px;padding-left:4px;white-space:nowrap}
+.ok{color:#66bb6a}.bad{color:#ff5252}.Critical{color:#ff5252}.Warning{color:#ffb300}
+section{display:none}section.on{display:block}h2{border-bottom:1px solid #444;padding-bottom:4px}
+input,select,button{background:#222;color:#eee;border:1px solid #444;padding:4px;cursor:pointer}
+pre{background:#1b1b1b;padding:8px;white-space:pre-wrap;word-break:break-all}code{font-size:12px;word-break:break-all}
+</style>
+<h1>ContainerGuard</h1>
+<nav><button data-tab=ov class=on>Overview</button> <button data-tab=al>Alerts</button> <button data-tab=in>Incidents</button> <button data-tab=co>Collect</button> <small id=ts></small></nav>
+
+<section id=ov class=on><h2>CIS Docker Benchmark</h2><div id=cis></div>
+<h2>Custom-rule alerts</h2><div id=counts></div>
+<h2>Trivy: HIGH / CRITICAL / secrets</h2><table id=trivy></table></section>
+
+<section id=al><h2>Alerts</h2>
+<select id=frule><option value="">all rules</option><option>CG Interactive Shell in Production Container</option><option>CG Sensitive File Read</option><option>CG Docker Socket Access</option><option>CG Privilege Escalation Syscall</option><option>CG Unexpected Outbound Connection From Worker</option><option>CG Privileged Container Created</option></select>
+<select id=fcont><option value="">all containers</option><option>cg-web</option><option>cg-db</option><option>cg-worker</option><option>host</option></select>
+<input id=fsince value="2026-11-15T20:00:00" size=22> <button id=fgo>Apply</button>
+<table id=alerts></table></section>
+
+<section id=in><h2>Evidence bundles</h2><table id=inc></table><div id=vout></div></section>
+
+<section id=co><h2>Collect evidence now</h2>
+<p>Runs the forensic collector on a container and records it in the chain of custody.</p>
+<button data-collect=cg-web>cg-web</button> <button data-collect=cg-db>cg-db</button> <button data-collect=cg-worker>cg-worker</button>
+<pre id=cout></pre></section>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const bar = (l, v) => '<div>' + esc(l) + '<div class=bar style="width:' + Math.min(Math.max(+v||0, 1) * 5, 600) + 'px">' + esc(v) + '</div></div>';
+const SINCE = '2026-11-15T20:00:00';
+let T = sessionStorage.getItem('cgtoken') || '', tab = 'ov';
+
+async function call(path, opts = {}) {
+  const r = await fetch(path, {...opts, headers: {'Authorization': 'Bearer ' + T}});
+  if (r.status === 401) {
+    const t = prompt('API token (cat ~/containerguard/dashboard/.token)');
+    if (!t) throw new Error('token required');
+    T = t; sessionStorage.setItem('cgtoken', T); return call(path, opts);
+  }
+  return r;
+}
+const api = async (p, o) => (await call(p, o)).json();
+const fmt = s => s ? s.high + ' / ' + s.critical + ' / ' + s.secrets : 'n/a';
+
+async function overview() {
+  const [s, a] = await Promise.all([api('/api/scans'), api('/api/alerts?limit=1&since=' + encodeURIComponent(SINCE))]);
+  $('cis').innerHTML = bar('Before', s.cis.before ?? 0) + bar('After', s.cis.after ?? 0);
+  $('counts').innerHTML = Object.entries(a.counts).map(([k, v]) => bar(k, v)).join('') || 'No alerts since filter';
+  $('trivy').innerHTML = '<tr><th>Image</th><th>Before</th><th>After</th></tr>' +
+    s.trivy.map(t => '<tr><td>' + esc(t.image) + '</td><td>' + fmt(t.before) + '</td><td>' + fmt(t.after) + '</td></tr>').join('');
+}
+async function alerts() {
+  const q = new URLSearchParams({rule: $('frule').value, container: $('fcont').value, since: $('fsince').value, limit: 100});
+  const a = await api('/api/alerts?' + q);
+  $('alerts').innerHTML = '<tr><th>Time</th><th>Rule</th><th>Priority</th><th>Container</th><th>Detail</th></tr>' +
+    a.alerts.map(x => '<tr><td>' + esc(x.time) + '</td><td>' + esc(x.rule) + '</td><td class="' + esc(x.priority) + '">' + esc(x.priority) +
+      '</td><td>' + esc(x.container) + '</td><td><code>' + esc(x.output) + '</code></td></tr>').join('');
+}
+async function incidents() {
+  const rows = await api('/api/incidents');
+  $('inc').innerHTML = '<tr><th>UTC</th><th>Incident</th><th>Container</th><th>Trigger</th><th>Bundle SHA-256</th><th></th></tr>' +
+    rows.slice().reverse().map(r => '<tr><td>' + esc(r.utc) + '</td><td>' + esc(r.incident) + '</td><td>' + esc(r.container) + '</td><td>' +
+      esc(r.trigger_rule) + '</td><td><code>' + esc(r.bundle_sha256) + '</code></td><td><button data-act=verify data-id="' + esc(r.incident) +
+      '">Verify</button> <button data-act=report data-id="' + esc(r.incident) + '">Report</button></td></tr>').join('');
+}
+const views = {ov: overview, al: alerts, in: incidents, co: async () => {}};
+async function refresh() { try { await views[tab](); $('ts').textContent = 'updated ' + new Date().toLocaleTimeString(); } catch (e) { $('ts').textContent = e.message; } }
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.tab) {
+    tab = b.dataset.tab;
+    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === tab));
+    refresh();
+  } else if (b.id === 'fgo') { refresh();
+  } else if (b.dataset.act === 'verify') {
+    const v = await api('/api/incidents/' + b.dataset.id + '/verify');
+    $('vout').innerHTML = '<h3>' + esc(b.dataset.id) + ': <span class="' + (v.all_ok ? 'ok">ALL OK' : 'bad">MISMATCH') + '</span></h3><table><tr><th>File</th><th>Result</th></tr>' +
+      v.files.map(f => '<tr><td>' + esc(f.file) + '</td><td class="' + (f.ok ? 'ok">OK' : 'bad">MISMATCH') + '</td></tr>').join('') +
+      '<tr><td>bundle .tar.gz vs chain of custody</td><td class="' + (v.bundle.ok ? 'ok">OK' : 'bad">MISMATCH') + '</td></tr></table>';
+  } else if (b.dataset.act === 'report') {
+    const w = window.open('about:blank');
+    const r = await call('/api/incidents/' + b.dataset.id + '/report');
+    if (r.ok) w.location = URL.createObjectURL(await r.blob()); else { w.close(); alert('Report failed'); }
+  } else if (b.dataset.collect) {
+    $('cout').textContent = 'collecting...';
+    const r = await api('/api/collect/' + b.dataset.collect, {method: 'POST'});
+    $('cout').textContent = r.output || r.error;
+  }
+});
+refresh(); setInterval(() => { if (tab !== 'co') refresh(); }, 5000);
+</script>

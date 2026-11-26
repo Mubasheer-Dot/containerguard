@@ -1,0 +1,80 @@
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+  restart: on-failure:5
+  pids_limit: 200
+
+services:
+  web:
+    <<: *hardening
+    build: ./app
+    container_name: cg-web
+    labels:
+      env: production
+    environment:
+      DB_PASSWORD: labpass123
+    ports:
+      - "127.0.0.1:8080:5000"
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 256m
+    cpus: 0.5
+    networks: [lab, edge]
+    depends_on: [db]
+
+  db:
+    <<: *hardening
+    image: postgres:17-alpine
+    container_name: cg-db
+    labels:
+      env: production
+    user: "70:70"
+    environment:
+      POSTGRES_DB: shop
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: labpass123
+    read_only: true
+    tmpfs: [/tmp, /var/run/postgresql]
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop -d shop"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks: [lab]
+
+  worker:
+    <<: *hardening
+    build: ./worker
+    container_name: cg-worker
+    labels:
+      env: production
+    environment:
+      DB_PASSWORD: labpass123
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 128m
+    cpus: 0.25
+    networks: [lab]
+    depends_on: [db]
+
+  kali:
+    image: kalilinux/kali-rolling
+    container_name: cg-kali
+    command: sleep infinity
+    pids_limit: 200
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 60s
+    mem_limit: 512m
+    cpus: 1.0
+    security_opt:
+      - no-new-privileges:true
+    networks: [lab]
+
+networks:
+  lab:
+    internal: true
+  edge: {}
